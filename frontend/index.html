@@ -1,3 +1,4 @@
+const API_BASE_URL = "https://c6610ldwb2.execute-api.us-east-1.amazonaws.com/prod";
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -331,6 +332,9 @@
     </div>
 
     <script>
+        // Configure the API base URL - this will be replaced during deployment
+        const API_BASE_URL = "https://c66101dwb2.execute-api.us-east-1.amazonaws.com/prod"; // Will be replaced with actual API Gateway URL
+        
         // Game state variables
         let wins = 0, losses = 0, draws = 0;
         let aiWins = 0, aiLosses = 0, aiDraws = 0;
@@ -418,7 +422,7 @@
 
             // Fetch AI model rankings from the backend
             try {
-                const apiUrl = "http://localhost:8000/game/ai-performance"; // Replace with your API endpoint
+                const apiUrl = `${API_BASE_URL}/game/ai-performance`; 
                 const response = await fetch(apiUrl, { method: "GET" });
 
                 if (!response.ok) {
@@ -454,7 +458,7 @@
                 return;
             }
 
-            const apiUrl = "http://localhost:8000/game/play"; // Replace with your API endpoint
+            const apiUrl = `${API_BASE_URL}/game/play`; 
             const algorithm = document.getElementById("algorithm").value;
 
             try {
@@ -572,7 +576,7 @@
         // Fetch game statistics from the server
         async function fetchGameStats() {
             try {
-                const apiUrl = "http://localhost:8000/stats"; // New API endpoint for stats
+                const apiUrl = `${API_BASE_URL}/stats`; 
                 const response = await fetch(apiUrl, { method: "GET" });
 
                 if (!response.ok) {
@@ -655,7 +659,7 @@
         // Function to fetch individual user stats
         async function fetchUserStats(userId) {
             try {
-                const apiUrl = `http://localhost:8000/stats/${userId}`; // Your existing endpoint
+                const apiUrl = `${API_BASE_URL}/stats/${userId}`; 
                 const response = await fetch(apiUrl, { method: "GET" });
 
                 if (!response.ok) {
@@ -665,21 +669,6 @@
 
                 const userStats = await response.json();
                 console.log("User Statistics Response:", userStats);
-                
-                // If you want to update session stats with data from server
-                // Uncomment these lines:
-                /*
-                document.getElementById("wins").innerText = userStats.wins || 0;
-                document.getElementById("losses").innerText = userStats.losses || 0;
-                document.getElementById("draws").innerText = userStats.draws || 0;
-                
-                const totalGames = (userStats.wins || 0) + (userStats.losses || 0) + (userStats.draws || 0);
-                document.getElementById("total-games").innerText = totalGames;
-                
-                // Calculate win rate
-                const winRate = totalGames > 0 ? ((userStats.wins / totalGames) * 100).toFixed(1) : 0;
-                document.getElementById("player-win-rate").innerText = winRate + "%";
-                */
                 
                 // If your API includes move distribution, you could update that too
                 if (userStats.moves) {
