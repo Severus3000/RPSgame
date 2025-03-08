@@ -15,7 +15,7 @@ app = FastAPI(
 # Add CORS middleware with specific origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://rpsgame-bucket.s3-website-us-east-1.amazonaws.com"],
+    allow_origins=["*"],  # Allow all origins during debugging
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
