@@ -1,147 +1,224 @@
+import os
 import boto3
 from datetime import datetime
 
-# Initialize DynamoDB resource
-dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
-table = dynamodb.Table("GameHistory")
+# Use environment variable to determine if using DynamoDB or local storage
+USE_DYNAMODB = os.environ.get('USE_DYNAMODB', 'False').lower() == 'true'
+
+# Initialize database connections based on environment
+if USE_DYNAMODB:
+    # DynamoDB setup for production
+    dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
+    table = dynamodb.Table("GameHistory")
+    print("Using DynamoDB backend")
+else:
+    # Local in-memory database for development
+    game_records = []
+    print("Using local in-memory backend")
 
 def save_game(user_id, user_move, ai_move, ai_type, result):
     """
-    Saves a game record to DynamoDB.
+    Saves a game record to the database.
     """
-    table.put_item(
-        Item={
+    if USE_DYNAMODB:
+        # DynamoDB implementation
+        table.put_item(
+            Item={
+                "user_id": user_id,
+                "timestamp": str(datetime.utcnow()),
+                "user_move": user_move,
+                "ai_move": ai_move,
+                "ai_type": ai_type,
+                "result": result
+            }
+        )
+    else:
+        # Local in-memory implementation
+        game_records.append({
             "user_id": user_id,
             "timestamp": str(datetime.utcnow()),
             "user_move": user_move,
             "ai_move": ai_move,
             "ai_type": ai_type,
             "result": result
-        }
-    )
+        })
+        print("Game saved:", game_records[-1])  # Debugging log
 
-def get_game_history(user_id):
+def get_game_history(user_id=None):
     """
-    Retrieves a user's game history from DynamoDB.
+    Retrieves game history.
     """
-    response = table.query(
-        KeyConditionExpression="user_id = :uid",
-        ExpressionAttributeValues={":uid": user_id}
-    )
-    return response.get("Items", [])
+    if USE_DYNAMODB:
+        if user_id:
+            # Query for specific user in DynamoDB
+            response = table.query(
+                KeyConditionExpression="user_id = :uid",
+                ExpressionAttributeValues={":uid": user_id}
+            )
+            return response.get("Items", [])
+        else:
+            # Get all records (note: inefficient for large tables)
+            response = table.scan()
+            return response.get("Items", [])
+    else:
+        # Local implementation
+        if user_id:
+            return [game for game in game_records if game["user_id"] == user_id]
+        return game_records
 
 def get_user_stats(user_id):
     """
     Computes win/loss/draw statistics for a user.
     """
-    games = get_game_history(user_id)
-    wins = sum(1 for g in games if g["result"] == "win")
-    losses = sum(1 for g in games if g["result"] == "lose")
-    draws = sum(1 for g in games if g["result"] == "draw")
-    return {"wins": wins, "losses": losses, "draws": draws}
+    if USE_DYNAMODB:
+        games = get_game_history(user_id)
+        wins = sum(1 for g in games if g["result"] == "win")
+        losses = sum(1 for g in games if g["result"] == "lose")
+        draws = sum(1 for g in games if g["result"] == "draw")
+        
+        # Also track move distribution
+        rock_count = sum(1 for game in games if game["user_move"] == "rock")
+        paper_count = sum(1 for game in games if game["user_move"] == "paper")
+        scissors_count = sum(1 for game in games if game["user_move"] == "scissors")
+        
+        return {
+            "wins": wins, 
+            "losses": losses, 
+            "draws": draws,
+            "rock": rock_count,
+            "paper": paper_count,
+            "scissors": scissors_count
+        }
+    else:
+        # Local implementation
+        user_games = [game for game in game_records if game["user_id"] == user_id]
+        rock_count = sum(1 for game in user_games if game["user_move"] == "rock")
+        paper_count = sum(1 for game in user_games if game["user_move"] == "paper")
+        scissors_count = sum(1 for game in user_games if game["user_move"] == "scissors")
+        
+        # Also count wins/losses/draws
+        wins = sum(1 for game in user_games if game["result"] == "win")
+        losses = sum(1 for game in user_games if game["result"] == "lose")
+        draws = sum(1 for game in user_games if game["result"] == "draw")
+        
+        return {
+            "rock": rock_count, 
+            "paper": paper_count, 
+            "scissors": scissors_count,
+            "wins": wins,
+            "losses": losses,
+            "draws": draws
+        }
 
-
-
-
-"""
-for local testing
-"""
-# Temporary in-memory database for local testing
-game_records = []
-
-def save_game(user_id, user_move, ai_move, ai_type, result):
-    """
-    Save the game result in memory instead of DynamoDB.
-    """
-    game_records.append({
-        "user_id": user_id,
-        "user_move": user_move,
-        "ai_move": ai_move,
-        "ai_type": ai_type,
-        "result": result
-    })
-    print("Game saved:", game_records[-1])  # Debugging log
-
-
-def get_game_history():
-    """
-    Retrieve all game records.
-    """
-    return game_records
-
-def get_user_stats(user_id):
-    """
-    Retrieve the win/loss statistics for a given user.
-    """
-    user_games = [game for game in game_records if game["user_id"] == user_id]
-    rock_count = sum(1 for game in user_games if game["user_move"] == "rock")
-    paper_count = sum(1 for game in user_games if game["user_move"] == "paper")
-    scissors_count = sum(1 for game in user_games if game["user_move"] == "scissors")
-    return {"rock": rock_count, "paper": paper_count, "scissors": scissors_count}
-
-# Add these functions to your existing db.py file
-
+# Implement the other functions similarly
 def get_all_users_stats():
     """
     Retrieves statistics for all users.
-    
-    Returns:
-        List of dictionaries with user stats
     """
-    # Replace this with your actual database query
-    # This is just an example implementation
-    
-    # Example query:
-    # cursor.execute("SELECT user_id, wins, losses, draws FROM user_stats")
-    # return cursor.fetchall()
-    
-    # Placeholder implementation:
-    from your_database_module import execute_query
-    return execute_query("SELECT user_id, wins, losses, draws FROM user_stats")
-    
-    # If you're not using a database, you could have a dictionary like:
-    # return [
-    #     {"user_id": "test_user", "wins": 10, "losses": 5, "draws": 2},
-    #     {"user_id": "player2", "wins": 7, "losses": 8, "draws": 3},
-    # ]
+    if USE_DYNAMODB:
+        # Get all unique user IDs from DynamoDB
+        response = table.scan(ProjectionExpression="user_id")
+        user_ids = set(item["user_id"] for item in response.get("Items", []))
+        
+        # Get stats for each user
+        results = []
+        for user_id in user_ids:
+            stats = get_user_stats(user_id)
+            total_games = stats["wins"] + stats["losses"] + stats["draws"]
+            win_rate = (stats["wins"] / total_games * 100) if total_games > 0 else 0
+            
+            results.append({
+                "user_id": user_id,
+                "wins": stats["wins"],
+                "losses": stats["losses"],
+                "draws": stats["draws"],
+                "total_games": total_games,
+                "win_rate": win_rate
+            })
+        
+        return results
+    else:
+        # Local implementation
+        user_ids = set(game["user_id"] for game in game_records)
+        
+        results = []
+        for user_id in user_ids:
+            stats = get_user_stats(user_id)
+            total_games = stats["wins"] + stats["losses"] + stats["draws"]
+            win_rate = (stats["wins"] / total_games * 100) if total_games > 0 else 0
+            
+            results.append({
+                "user_id": user_id,
+                "wins": stats["wins"],
+                "losses": stats["losses"],
+                "draws": stats["draws"],
+                "total_games": total_games,
+                "win_rate": win_rate
+            })
+        
+        return results
 
 def get_all_ai_stats():
     """
     Retrieves statistics for all AI models.
-    
-    Returns:
-        List of dictionaries with AI model stats
     """
-    # Replace this with your actual database query
-    # Example query:
-    # cursor.execute("SELECT ai_type, wins, losses, draws FROM ai_stats")
-    # return cursor.fetchall()
-    
-    # Placeholder implementation:
-    from your_database_module import execute_query
-    return execute_query("SELECT ai_type, wins, losses, draws FROM ai_stats")
-    
-    # If you're not using a database, you could have a dictionary like:
-    # return [
-    #     {"ai_type": "random", "wins": 12, "losses": 18, "draws": 5},
-    #     {"ai_type": "markov", "wins": 20, "losses": 10, "draws": 4},
-    #     {"ai_type": "pattern", "wins": 15, "losses": 14, "draws": 6},
-    # ]
+    if USE_DYNAMODB:
+        # Scan all records
+        response = table.scan()
+        games = response.get("Items", [])
+        
+        # Group by AI type
+        ai_types = set(game["ai_type"] for game in games)
+        results = []
+        
+        for ai_type in ai_types:
+            ai_games = [g for g in games if g["ai_type"] == ai_type]
+            ai_wins = sum(1 for g in ai_games if g["result"] == "lose")  # AI wins when user loses
+            ai_losses = sum(1 for g in ai_games if g["result"] == "win")  # AI loses when user wins
+            ai_draws = sum(1 for g in ai_games if g["result"] == "draw")
+            total_games = len(ai_games)
+            win_rate = (ai_wins / total_games * 100) if total_games > 0 else 0
+            
+            results.append({
+                "ai_type": ai_type,
+                "wins": ai_wins,
+                "losses": ai_losses,
+                "draws": ai_draws,
+                "total_games": total_games,
+                "win_rate": win_rate
+            })
+        
+        return results
+    else:
+        # Local implementation
+        ai_types = set(game["ai_type"] for game in game_records)
+        results = []
+        
+        for ai_type in ai_types:
+            ai_games = [g for g in game_records if g["ai_type"] == ai_type]
+            ai_wins = sum(1 for g in ai_games if g["result"] == "lose")  # AI wins when user loses
+            ai_losses = sum(1 for g in ai_games if g["result"] == "win")  # AI loses when user wins
+            ai_draws = sum(1 for g in ai_games if g["result"] == "draw")
+            total_games = len(ai_games)
+            win_rate = (ai_wins / total_games * 100) if total_games > 0 else 0
+            
+            results.append({
+                "ai_type": ai_type,
+                "wins": ai_wins,
+                "losses": ai_losses,
+                "draws": ai_draws,
+                "total_games": total_games,
+                "win_rate": win_rate
+            })
+        
+        return results
 
 def get_total_games():
     """
     Returns the total number of games played.
     """
-    # Replace this with your actual database query
-    # Example query:
-    # cursor.execute("SELECT COUNT(*) FROM game_history")
-    # return cursor.fetchone()[0]
-    
-    # Placeholder implementation:
-    from your_database_module import execute_query
-    result = execute_query("SELECT COUNT(*) FROM game_history")
-    return result[0][0] if result else 0
-    
-    # Alternative approach if you track this separately:
-    # cursor.execute("SELECT total_games FROM global_stats WHERE id=1")
-    # return cursor.fetchone()[0]
+    if USE_DYNAMODB:
+        response = table.scan(Select="COUNT")
+        return response.get("Count", 0)
+    else:
+        return len(game_records)

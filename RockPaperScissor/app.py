@@ -29,4 +29,15 @@ app.add_middleware(
 )
 
 # AWS Lambda handler
-# handler = Mangum(app)
+handler = Mangum(app)
+
+# Comment out or conditionally include CORS middleware for local testing
+"""
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+"""
