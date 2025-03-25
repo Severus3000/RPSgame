@@ -1,22 +1,21 @@
-from __future__ import annotations
-
 from itertools import islice
-from typing import Any, Generator
-from urllib.parse import unquote, unquote_plus, urlencode
+from typing import Dict, Generator, List, Optional, Tuple
+from urllib.parse import urlencode, unquote, unquote_plus
+
 
 from mangum.handlers.utils import (
     get_server_and_port,
     handle_base64_response_body,
-    handle_exclude_headers,
     maybe_encode_body,
 )
 from mangum.types import (
+    HTTPResponse,
+    HTTPScope,
     LambdaConfig,
-    LambdaContext,
     LambdaEvent,
+    LambdaContext,
+    LambdaHandler,
     QueryParams,
-    Response,
-    Scope,
 )
 
 
@@ -39,9 +38,9 @@ def all_casings(input_string: str) -> Generator[str, None, None]:
                 yield first.upper() + sub_casing
 
 
-def case_mutated_headers(multi_value_headers: dict[str, list[str]]) -> dict[str, str]:
+def case_mutated_headers(multi_value_headers: Dict[str, List[str]]) -> Dict[str, str]:
     """Create str/str key/value headers, with duplicate keys case mutated."""
-    headers: dict[str, str] = {}
+    headers: Dict[str, str] = {}
     for key, values in multi_value_headers.items():
         if len(values) > 0:
             casings = list(islice(all_casings(key), len(values)))
@@ -60,9 +59,9 @@ def encode_query_string_for_alb(params: QueryParams) -> bytes:
         "them. You must decode them in your Lambda function."
     """
     params = {
-        unquote_plus(key): (
-            unquote_plus(value) if isinstance(value, str) else tuple(unquote_plus(element) for element in value)
-        )
+        unquote_plus(key): unquote_plus(value)
+        if isinstance(value, str)
+        else tuple(unquote_plus(element) for element in value)
         for key, value in params.items()
     }
     query_string = urlencode(params, doseq=True).encode()
@@ -70,8 +69,8 @@ def encode_query_string_for_alb(params: QueryParams) -> bytes:
     return query_string
 
 
-def transform_headers(event: LambdaEvent) -> list[tuple[bytes, bytes]]:
-    headers: list[tuple[bytes, bytes]] = []
+def transform_headers(event: LambdaEvent) -> List[Tuple[bytes, bytes]]:
+    headers: List[Tuple[bytes, bytes]] = []
     if "multiValueHeaders" in event:
         for k, v in event["multiValueHeaders"].items():
             for inner_v in v:
@@ -85,10 +84,17 @@ def transform_headers(event: LambdaEvent) -> list[tuple[bytes, bytes]]:
 
 class ALB:
     @classmethod
-    def infer(cls, event: LambdaEvent, context: LambdaContext, config: LambdaConfig) -> bool:
-        return "requestContext" in event and "elb" in event["requestContext"]
+    def infer(
+        cls, event: LambdaEvent, context: LambdaContext, config: LambdaConfig
+    ) -> Optional[LambdaHandler]:
+        if "requestContext" in event and "elb" in event["requestContext"]:
+            return cls(event, context, config)
 
-    def __init__(self, event: LambdaEvent, context: LambdaContext, config: LambdaConfig) -> None:
+        return None
+
+    def __init__(
+        self, event: LambdaEvent, context: LambdaContext, config: LambdaConfig
+    ) -> None:
         self.event = event
         self.context = context
         self.config = config
@@ -101,7 +107,8 @@ class ALB:
         )
 
     @property
-    def scope(self) -> Scope:
+    def scope(self) -> HTTPScope:
+
         headers = transform_headers(self.event)
         list_headers = [list(x) for x in headers]
         # Unique headers. If there are duplicates, it will use the last defined.
@@ -122,7 +129,7 @@ class ALB:
         server = get_server_and_port(uq_headers)
         client = (source_ip, 0)
 
-        scope: Scope = {
+        scope: HTTPScope = {
             "type": "http",
             "method": http_method,
             "http_version": "1.1",
@@ -141,8 +148,8 @@ class ALB:
 
         return scope
 
-    def __call__(self, response: Response) -> dict[str, Any]:
-        multi_value_headers: dict[str, list[str]] = {}
+    def __call__(self, response: HTTPResponse) -> dict:
+        multi_value_headers: Dict[str, List[str]] = {}
         for key, value in response["headers"]:
             lower_key = key.decode().lower()
             if lower_key not in multi_value_headers:
@@ -151,7 +158,7 @@ class ALB:
 
         finalized_headers = case_mutated_headers(multi_value_headers)
         finalized_body, is_base64_encoded = handle_base64_response_body(
-            response["body"], finalized_headers, self.config["text_mime_types"]
+            response["body"], finalized_headers
         )
 
         out = {
@@ -164,8 +171,8 @@ class ALB:
         # headers otherwise.
         multi_value_headers_enabled = "multiValueHeaders" in self.scope["aws.event"]
         if multi_value_headers_enabled:
-            out["multiValueHeaders"] = handle_exclude_headers(multi_value_headers, self.config)
+            out["multiValueHeaders"] = multi_value_headers
         else:
-            out["headers"] = handle_exclude_headers(finalized_headers, self.config)
+            out["headers"] = finalized_headers
 
         return out
