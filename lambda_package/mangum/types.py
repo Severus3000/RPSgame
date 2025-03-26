@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 from typing import (
-    List,
-    Tuple,
-    Dict,
     Any,
-    Union,
-    Optional,
-    Sequence,
-    MutableMapping,
     Awaitable,
     Callable,
+    Dict,
+    List,
+    MutableMapping,
+    Sequence,
+    Union,
 )
-from typing_extensions import Literal, Protocol, TypedDict, TypeAlias
 
+from typing_extensions import Literal, Protocol, TypeAlias, TypedDict
 
 LambdaEvent = Dict[str, Any]
 QueryParams: TypeAlias = MutableMapping[str, Union[str, Sequence[str]]]
@@ -58,8 +56,8 @@ class LambdaMobileClientContext(Protocol):
     """
 
     client: LambdaMobileClient
-    custom: Dict[str, Any]
-    env: Dict[str, Any]
+    custom: dict[str, Any]
+    env: dict[str, Any]
 
 
 class LambdaContext(Protocol):
@@ -86,8 +84,8 @@ class LambdaContext(Protocol):
     aws_request_id: str
     log_group_name: str
     log_stream_name: str
-    identity: Optional[LambdaCognitoIdentity]
-    client_context: Optional[LambdaMobileClientContext]
+    identity: LambdaCognitoIdentity | None
+    client_context: LambdaMobileClientContext | None
 
     def get_remaining_time_in_millis(self) -> int:
         """Returns the number of milliseconds left before the execution times out."""
@@ -95,121 +93,20 @@ class LambdaContext(Protocol):
 
 
 Headers: TypeAlias = List[List[bytes]]
+Message: TypeAlias = MutableMapping[str, Any]
+Scope: TypeAlias = MutableMapping[str, Any]
+Receive: TypeAlias = Callable[[], Awaitable[Message]]
+Send: TypeAlias = Callable[[Message], Awaitable[None]]
 
 
-class HTTPRequestEvent(TypedDict):
-    type: Literal["http.request"]
-    body: bytes
-    more_body: bool
-
-
-class HTTPDisconnectEvent(TypedDict):
-    type: Literal["http.disconnect"]
-
-
-class HTTPResponseStartEvent(TypedDict):
-    type: Literal["http.response.start"]
-    status: int
-    headers: Headers
-
-
-class HTTPResponseBodyEvent(TypedDict):
-    type: Literal["http.response.body"]
-    body: bytes
-    more_body: bool
-
-
-class LifespanStartupEvent(TypedDict):
-    type: Literal["lifespan.startup"]
-
-
-class LifespanStartupCompleteEvent(TypedDict):
-    type: Literal["lifespan.startup.complete"]
-
-
-class LifespanStartupFailedEvent(TypedDict):
-    type: Literal["lifespan.startup.failed"]
-    message: str
-
-
-class LifespanShutdownEvent(TypedDict):
-    type: Literal["lifespan.shutdown"]
-
-
-class LifespanShutdownCompleteEvent(TypedDict):
-    type: Literal["lifespan.shutdown.complete"]
-
-
-class LifespanShutdownFailedEvent(TypedDict):
-    type: Literal["lifespan.shutdown.failed"]
-    message: str
-
-
-ASGIReceiveEvent: TypeAlias = Union[
-    HTTPRequestEvent,
-    HTTPDisconnectEvent,
-    LifespanStartupEvent,
-    LifespanShutdownEvent,
-]
-
-ASGISendEvent: TypeAlias = Union[
-    HTTPResponseStartEvent,
-    HTTPResponseBodyEvent,
-    HTTPDisconnectEvent,
-    LifespanStartupCompleteEvent,
-    LifespanStartupFailedEvent,
-    LifespanShutdownCompleteEvent,
-    LifespanShutdownFailedEvent,
-]
-
-
-ASGIReceive: TypeAlias = Callable[[], Awaitable[ASGIReceiveEvent]]
-ASGISend: TypeAlias = Callable[[ASGISendEvent], Awaitable[None]]
-
-
-class ASGISpec(TypedDict):
-    spec_version: Literal["2.0"]
-    version: Literal["3.0"]
-
-
-HTTPScope = TypedDict(
-    "HTTPScope",
-    {
-        "type": Literal["http"],
-        "asgi": ASGISpec,
-        "http_version": Literal["1.1"],
-        "scheme": str,
-        "method": str,
-        "path": str,
-        "raw_path": None,
-        "root_path": Literal[""],
-        "query_string": bytes,
-        "headers": Headers,
-        "client": Tuple[str, int],
-        "server": Tuple[str, int],
-        "aws.event": LambdaEvent,
-        "aws.context": LambdaContext,
-    },
-)
-
-
-class LifespanScope(TypedDict):
-    type: Literal["lifespan"]
-    asgi: ASGISpec
+class ASGI(Protocol):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None: ...  # pragma: no cover
 
 
 LifespanMode: TypeAlias = Literal["auto", "on", "off"]
-Scope: TypeAlias = Union[HTTPScope, LifespanScope]
 
 
-class ASGIApp(Protocol):
-    async def __call__(
-        self, scope: Scope, receive: ASGIReceive, send: ASGISend
-    ) -> None:
-        ...  # pragma: no cover
-
-
-class HTTPResponse(TypedDict):
+class Response(TypedDict):
     status: int
     headers: Headers
     body: bytes
@@ -217,27 +114,20 @@ class HTTPResponse(TypedDict):
 
 class LambdaConfig(TypedDict):
     api_gateway_base_path: str
+    text_mime_types: list[str]
+    exclude_headers: list[str]
 
 
 class LambdaHandler(Protocol):
+    def __init__(self, *args: Any) -> None: ...  # pragma: no cover
+
     @classmethod
-    def infer(
-        cls, event: LambdaEvent, context: LambdaContext, config: LambdaConfig
-    ) -> Optional[LambdaHandler]:
-        ...  # pragma: no cover
-
-    def __init__(
-        self, event: LambdaEvent, context: LambdaContext, config: LambdaConfig
-    ) -> None:
-        ...  # pragma: no cover
+    def infer(cls, event: LambdaEvent, context: LambdaContext, config: LambdaConfig) -> bool: ...  # pragma: no cover
 
     @property
-    def body(self) -> bytes:
-        ...  # pragma: no cover
+    def body(self) -> bytes: ...  # pragma: no cover
 
     @property
-    def scope(self) -> HTTPScope:
-        ...  # pragma: no cover
+    def scope(self) -> Scope: ...  # pragma: no cover
 
-    def __call__(self, response: HTTPResponse) -> dict:
-        ...  # pragma: no cover
+    def __call__(self, response: Response) -> dict[str, Any]: ...  # pragma: no cover

@@ -1,39 +1,26 @@
-from typing import Dict, List, Optional
+from __future__ import annotations
+
+from typing import Any
 
 from mangum.handlers.utils import (
     handle_base64_response_body,
+    handle_exclude_headers,
     handle_multi_value_headers,
     maybe_encode_body,
 )
-from mangum.types import (
-    HTTPScope,
-    HTTPResponse,
-    LambdaConfig,
-    LambdaEvent,
-    LambdaContext,
-    LambdaHandler,
-)
+from mangum.types import LambdaConfig, LambdaContext, LambdaEvent, Response, Scope
 
 
 class LambdaAtEdge:
     @classmethod
-    def infer(
-        cls, event: LambdaEvent, context: LambdaContext, config: LambdaConfig
-    ) -> Optional[LambdaHandler]:
-        if (
-            "Records" in event
-            and len(event["Records"]) > 0
-            and "cf" in event["Records"][0]
-        ):
-            return cls(event, context, config)
+    def infer(cls, event: LambdaEvent, context: LambdaContext, config: LambdaConfig) -> bool:
+        return "Records" in event and len(event["Records"]) > 0 and "cf" in event["Records"][0]
 
         # FIXME: Since this is the last in the chain it doesn't get coverage by default,
-        # just ignoring it for now.
-        return None  # pragma: nocover
+        # # just ignoring it for now.
+        # return None  # pragma: nocover
 
-    def __init__(
-        self, event: LambdaEvent, context: LambdaContext, config: LambdaConfig
-    ) -> None:
+    def __init__(self, event: LambdaEvent, context: LambdaContext, config: LambdaConfig) -> None:
         self.event = event
         self.context = context
         self.config = config
@@ -47,7 +34,7 @@ class LambdaAtEdge:
         )
 
     @property
-    def scope(self) -> HTTPScope:
+    def scope(self) -> Scope:
         cf_request = self.event["Records"][0]["cf"]["request"]
         scheme_header = cf_request["headers"].get("cloudfront-forwarded-proto", [{}])
         scheme = scheme_header[0].get("value", "https")
@@ -68,10 +55,7 @@ class LambdaAtEdge:
             "type": "http",
             "method": http_method,
             "http_version": "1.1",
-            "headers": [
-                [k.encode(), v[0]["value"].encode()]
-                for k, v in cf_request["headers"].items()
-            ],
+            "headers": [[k.encode(), v[0]["value"].encode()] for k, v in cf_request["headers"].items()],
             "path": cf_request["uri"],
             "raw_path": None,
             "root_path": "",
@@ -84,19 +68,19 @@ class LambdaAtEdge:
             "aws.context": self.context,
         }
 
-    def __call__(self, response: HTTPResponse) -> dict:
+    def __call__(self, response: Response) -> dict[str, Any]:
         multi_value_headers, _ = handle_multi_value_headers(response["headers"])
         response_body, is_base64_encoded = handle_base64_response_body(
-            response["body"], multi_value_headers
+            response["body"], multi_value_headers, self.config["text_mime_types"]
         )
-        finalized_headers: Dict[str, List[Dict[str, str]]] = {
+        finalized_headers: dict[str, list[dict[str, str]]] = {
             key.decode().lower(): [{"key": key.decode().lower(), "value": val.decode()}]
             for key, val in response["headers"]
         }
 
         return {
             "status": response["status"],
-            "headers": finalized_headers,
+            "headers": handle_exclude_headers(finalized_headers, self.config),
             "body": response_body,
             "isBase64Encoded": is_base64_encoded,
         }

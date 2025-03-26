@@ -1,1 +1,1 @@
-https://c6610ldwb2.execute-api.us-east-1.amazonaws.com/prod
+https://ceplpuh2ba.execute-api.us-east-1.amazonaws.com/prod

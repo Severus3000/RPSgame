@@ -22,39 +22,35 @@ if os.path.exists(ZIP_FILENAME):
 os.makedirs(OUTPUT_DIR)
 print(f"Created {OUTPUT_DIR} directory")
 
-# Get Poetry virtual environment path
-print("Finding Poetry virtual environment path...")
-poetry_env_cmd = ["poetry", "env", "info", "-p"]
-poetry_env_path = subprocess.check_output(poetry_env_cmd, universal_newlines=True).strip()
-site_packages_path = os.path.join(poetry_env_path, "lib", "python3.13", "site-packages")  # Adjust for your Python version
+# Create a requirements.txt file manually
+print("Creating requirements.txt file...")
+requirements = [
+    "boto3>=1.24.0",
+    "mangum>=0.14.0",
+    "uvicorn>=0.15.0",
+    "fastapi>=0.100",
+    "pydantic>=2.0",
+    "numpy>=2.2.3",
+    "pydantic-core>=2.0.0",
+    "typing-extensions>=4.0.0",
+    "starlette>=0.27.0"
+]
 
-if not os.path.exists(site_packages_path):
-    print(f"Error: Poetry virtual environment path not found: {site_packages_path}")
-    sys.exit(1)
+with open("requirements.txt", "w") as f:
+    f.write("\n".join(requirements))
 
-print(f"Using Poetry virtual environment at: {site_packages_path}")
-
-# Copy dependencies from Poetry's site-packages
-print("Copying dependencies from Poetry virtual environment...")
-shutil.copytree(site_packages_path, OUTPUT_DIR, dirs_exist_ok=True)
-
-# Verify that pydantic_core is copied
-pydantic_core_path = os.path.join(OUTPUT_DIR, "pydantic_core")
-if not os.path.exists(pydantic_core_path):
-    print("Error: pydantic_core is missing! Trying to install it manually...")
-
-    # Manually install pydantic_core
+# Install dependencies directly into the package directory
+print("Installing dependencies directly to package directory...")
+try:
     subprocess.run([
-        sys.executable, "-m", "pip", "install", "pydantic-core",
-        "--platform", "manylinux2014_x86_64",
-        "--only-binary=:all:",
+        sys.executable, "-m", "pip", "install",
+        "-r", "requirements.txt",
         "--target", OUTPUT_DIR
     ], check=True)
-
-if os.path.exists(pydantic_core_path):
-    print("✅ pydantic_core successfully copied!")
-else:
-    print("❌ Error: pydantic_core is still missing. Lambda may fail.")
+    print("Successfully installed dependencies")
+except subprocess.CalledProcessError as e:
+    print(f"Error installing dependencies: {str(e)}")
+    sys.exit(1)
 
 # Copy application code
 print("Copying application code...")
@@ -74,17 +70,24 @@ try:
                 file_path = os.path.join(root, file)
                 arcname = os.path.relpath(file_path, OUTPUT_DIR)
                 zipf.write(file_path, arcname)
-
+    
     zip_size = os.path.getsize(ZIP_FILENAME) / (1024 * 1024)  # Convert to MB
     print(f"Lambda package created: {ZIP_FILENAME} ({zip_size:.2f} MB)")
-
-    # Optional: Check if `pydantic_core` is inside the zip
-    print("\nChecking for pydantic_core in ZIP file:")
+    
+    # Verify key packages in the ZIP file
+    print("\nVerifying key packages in ZIP file:")
     with zipfile.ZipFile(ZIP_FILENAME, 'r') as zipf:
-        for name in zipf.namelist():
-            if 'pydantic_core' in name or 'pydantic' in name:
-                print(name)
-
+        key_packages = ['fastapi', 'pydantic', 'mangum', 'starlette']
+        for package in key_packages:
+            found = False
+            for name in zipf.namelist():
+                if package in name:
+                    print(f"✅ {package} found: {name}")
+                    found = True
+                    break
+            if not found:
+                print(f"❌ {package} not found!")
+    
 except Exception as e:
     print(f"Error creating ZIP file: {str(e)}")
     sys.exit(1)
