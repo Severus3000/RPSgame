@@ -72,6 +72,13 @@ def get_user_stats(user_id):
     """
     Computes win/loss/draw statistics for a user.
     """
+    rock_count = 0
+    paper_count = 0
+    scissors_count = 0
+    wins = 0
+    losses = 0
+    draws = 0
+    
     if USE_DYNAMODB:
         games = get_game_history(user_id)
         wins = sum(1 for g in games if g["result"] == "win")

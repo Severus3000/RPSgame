@@ -31,10 +31,10 @@ async def play_game(request: GameRequest):
     ai = ai_instances[instance_key]
     
     # Get user stats for AI decision making
-    history = get_user_stats(request.user_id) 
+    #history = get_user_stats(request.user_id) 
     
     # Get AI's move based on history
-    ai_move = ai.make_move(history)
+    ai_move = ai.make_move([])
     
     # Handle special case for AdaptiveMarkovAI to update its internal history
     if isinstance(ai, AdaptiveMarkovAI):
